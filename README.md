@@ -1,56 +1,91 @@
-# Luarocks package in Jfrog Artifactory
-[Jfrog Artifactory](https://jfrog.com/artifactory/) free and commercial versions does not support [luarocks](http://luarocks.org/) repository yet. This repository this functional to Artifactory.
+# Luarocks repository in JFrog Artifactory
+[Jfrog Artifactory] does not support [Luarocks] repository layout yet. This repository adds a workaround to store
+luarocks in Artifactory.
 
-If you want pack and use a `rock`-package, but don't want use luarocks.org by some reason and have Artifactory - use this!
+It comes in handy if:
+- you create Lua modules (*rocks*)
+- you can't store them at luarocks.org public repo
+- you have an Artifactory instance
 
-## How it works?
-- Luarocks - is [static HTTP server with some index and manifest file](https://github.com/luarocks/luarocks/wiki/Hosting-binary-rocks)
-- You create repository `myluarocks.snapshot` in Artifactory
-- You upload a `rock` binary file to repository - by hand or API
-- Connect to `myluarocks.snapshot` via [WebDav](https://www.jfrog.com/confluence/display/RTF/Using+WebDAV)
-- Calculate index and manifest
-- For now you can use `myluarocks.snapshot` like luarocks-server: 
+## Replicating Luarocks server
+Luarocks is a [static HTTP server with index and manifest files]. It's easy to replicate its functions using an 
+Artifactory repository with generic layout.
+
+To create or update Luarocks index and manifests, you need to do the following:
+1. Create a new repository in Artifactory (for example, `myluarocks.snapshot`).
+2. Upload a *rock* to this repository (manually or [via API]).
+3. Connect to `myluarocks.snapshot` via [WebDav].
+4. Create index and manifest with `luarock-admin make-manifest myluarocks.snapshot`.
+5. Wait until Artifactory reindexes the storage (5-15 seconds).
+
+Now you can use `myluarocks.snapshot` as a Luarocks server: 
 ```bash
-luarocks  install --server=http://repo.example.com/artifactory/myluarocks.snapshot mypackage
+luarocks install --server=http://repo.example.com/artifactory/myluarocks.snapshot mypackage
 ```
-- If you compile and upload all dependencies to `myluarocks.snapshot`, use `--only-server`:
+**Note:** Our script forces no-dependencies mode for the sake of testing.
+
+If you compile and upload all dependencies to `myluarocks.snapshot`, use `--only-server`:
 ```bash
-luarocks  install --only-server=http://repo.example.com/artifactory/myluarocks.snapshot mypackage
+luarocks install --only-server=http://repo.example.com/artifactory/myluarocks.snapshot mypackage
 ```
 
-## Install
-We recommend run scripts in docker - we change some local file and don't remove our line after work (e.g. `/etc/fstab`)
-- Install [Docker](https://docs.docker.com/install/)
-- Create repo and upload one `mypackage.rock` file for test
-- **!!** Add `anonymous` full access to this repo (will be fixed later). `username` and `password` can be empty for now
-- Use this scripts for create luarocks:
+## Automation
+This repository provides a shell script and a Dockerfile to update server manifests and test package installation.
+
+## Installation
+We recommend using Docker to keep things isolated and leave your environment untouched.
+- Install [Docker]
+- Create an Artifactory repo
+- Deploy a *rock* for testing
+
+  **Important:** If your artifactory repo does not allow anonymous access, add authentication by modifying curl launch parameters:
+  ```bash
+  echo "variables = {CURL = \"curl -H 'Authorization: Basic $BASE64_AUTH'\"}" > ~/.luarocks/config-${LUA_VERSION%.*}.lua
+  ```
+  OR (only with Luarocks 3.1+):
+  ```bash
+  luarocks config CURL="curl -H 'Authorization: Basic $BASE64_AUTH'"
+  ```
+- Use this repo to create Luarocks manifests:
 ```bash
 git clone https://gitlab.com/devopshq/luarocks-artifactory.git
 cd luarocks-artifactory
 docker build -t luarocks-artifactory .
-docker run --rm --device /dev/fuse -v`pwd`:/src --privileged luarocks-artifactory sh /src/create-luarocks.sh http://repo.example.com/artifactory myluarocks.snapshot username_with_delete_permisstion:password
+docker run --rm --device /dev/fuse -v "$(pwd)/create-luarocks.sh:/create-luarocks.sh" --privileged luarocks-artifactory sh /create-luarocks.sh http://repo.example.com/artifactory myluarocks.snapshot username:password
 luarocks  install --server=http://repo.example.com/artifactory/myluarocks.snapshot mypackage
 ```
 
-Use `USER=root` - https://github.com/luarocks/luarocks/issues/901
+**Important:** Use `USER=root`. See [GitHub issue].
 
 ## Usage
 ```bash
-> sh ./create-luarocks.sh
+> sh ./create-luarocks.sh --help
 
 Usage:
-    .\create-luarocks.sh ARTIFACTORY_URL REPO USERNAME:PASSWORD --packages PACKAGE1 PACKAGE2
-    ARTIFACTORY_URL             URL to Artifactory instance, e.g: https://repo.example.com
-    REPOSITORY                  Repository name, where needed create luarocks index and manifest
-    USERNAME:PASSWORD           Credential for user with read\write\remove permission, splitted by colon: username:passw
-ord
-    --packages pkg1 pgk2        You can test install your package if needed.
+    create-luarocks.sh ARTIFACTORY_URL REPO USERNAME:PASSWORD [--install-any pkg1 pgk2] [--install-all pkg1 pgk2]
+    ARTIFACTORY_URL             URL to Artifactory instance, e.g: https://repo.example.com/artifactory.
+    REPOSITORY                  Repository to store rocks and maintain index and manifest.
+    USERNAME:PASSWORD           Credentials for user with read, write and remove permissions to this repository (split by colon).
+    --install-all pkg1 pgk2     (optional) Try to install all specified packages.
+    --install-any pkg1 pgk2     (optional) Try to install any of specified packages.
 
-Example:
-    .\create-luarocks.sh https://repo.example.com myluarocks.snapshot deploy_user:password
+Examples:
+    create-luarocks.sh https://repo.example.com/artifactory myluarocks.snapshot deploy_user:password
+    create-luarocks.sh https://repo.example.com/artifactory myluarocks.snapshot deploy_user:password --install-any penlight rapidjson
 ```
 
-## Scheduler and automate
-You can schedule or use [Artifactory WebHook](https://jfrog.com/blog/automation-using-webhooks-in-jfrog-artifactory/) to automate indexing.
+See [GitLab CI example](./.gitlab-ci.yml).
 
-See [.gitlab-ci.yml](./.gitlab-ci.yml) example
+## Scheduler and automation
+You can schedule or use [Artifactory WebHook] to automate indexing.
+
+
+
+[Jfrog Artifactory]: https://jfrog.com/artifactory
+[Luarocks]: https://luarocks.org
+[static HTTP server with index and manifest files]: https://github.com/luarocks/luarocks/wiki/Hosting-binary-rocks
+[via API]: https://www.jfrog.com/confluence/display/JFROG/Artifactory+REST+API#ArtifactoryRESTAPI-DeployArtifact
+[WebDav]: https://www.jfrog.com/confluence/display/RTF/Using+WebDAV
+[Docker]: https://docs.docker.com/install
+[GitHub issue]: https://github.com/luarocks/luarocks/issues/901
+[Artifactory WebHook]: https://jfrog.com/blog/automation-using-webhooks-in-jfrog-artifactory
