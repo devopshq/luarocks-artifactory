@@ -95,10 +95,16 @@ test_install_any() {
 
 # Parse args
 ARTIFACTORY_URL="$1"
-REPOSITORY=$2
+REPOSITORY="$2"
 AUTH="$3"
-LOGIN="${AUTH%%:*}"
-PASSWORD="${AUTH#*:}"
+# Check for colon
+if [[ -z ${AUTH##*:*} ]]; then
+  LOGIN="${AUTH%%:*}"
+  PASSWORD="${AUTH#*:}"
+else
+  echoerr "Use username:password as authentication string"
+  exit 1
+fi
 
 for PARAM in "$ARTIFACTORY_URL" "$REPOSITORY" "$LOGIN" "$PASSWORD"; do
   if [[ "$PARAM" == "" ]] && [[ "$1" != "--help" ]]; then

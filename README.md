@@ -38,7 +38,8 @@ We recommend using Docker to keep things isolated and leave your environment unt
 - Create an Artifactory repo
 - Deploy a *rock* for testing
 
-  **Important:** If your artifactory repo does not allow anonymous access, add authentication by modifying curl launch parameters:
+  **Important:** If your artifactory repo does not allow anonymous read access, add authentication by modifying curl
+  launch parameters:
   ```bash
   echo "variables = {CURL = \"curl -H 'Authorization: Basic $BASE64_AUTH'\"}" > ~/.luarocks/config-${LUA_VERSION%.*}.lua
   ```
