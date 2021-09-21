@@ -1,66 +1,48 @@
-FROM alpine
+FROM alpine:3.12
 
-#
-# Install Lua: origin https://hub.docker.com/r/abaez/lua/dockerfile
-#
+# Lua original Dockerfile https://hub.docker.com/r/abaez/lua/dockerfile
+ENV LUA_VERSION 5.4.3
 
-ENV LUA_MAJOR_VERSION 5.1
-ENV LUA_MINOR_VERSION 5
-ENV LUA_VERSION ${LUA_MAJOR_VERSION}.${LUA_MINOR_VERSION}
+# LuaRocks original Dockerfile https://hub.docker.com/r/abaez/luarocks/dockerfile
+ENV LUAROCKS_VERSION 3.7.0
 
-# Dependencies
-RUN apk add --update make tar unzip gcc openssl-dev readline-dev curl libc-dev
-RUN apk add ncurses-dev
+# Basic runtime + luarocks-artifactory dependencies
+RUN apk add --no-cache \
+    curl \
+    davfs2 \
+    ncurses-dev \
+    openssl \
+    readline-dev \
+    unzip
 
-RUN curl -L http://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz | tar xzf -
-WORKDIR /lua-$LUA_VERSION
-
-# build lua
-RUN make linux test
-RUN make install
-
-WORKDIR /
-
-# lua env
-ENV WITH_LUA /usr/local/
-ENV LUA_LIB /usr/local/lib/lua
-ENV LUA_INCLUDE /usr/local/include
-
-RUN rm /lua-$LUA_VERSION -rf
-
-#
-# Install Luarocks: origin https://hub.docker.com/r/abaez/luarocks/dockerfile
-#
-ENV LUAROCKS_VERSION 2.4.2
-ENV LUAROCKS_INSTALL luarocks-$LUAROCKS_VERSION
-ENV TMP_LOC /tmp/luarocks
-
-# Build Luarocks
-RUN curl -OL \
-    https://luarocks.org/releases/${LUAROCKS_INSTALL}.tar.gz
-
-RUN tar xzf $LUAROCKS_INSTALL.tar.gz && \
-    mv $LUAROCKS_INSTALL $TMP_LOC && \
-    rm $LUAROCKS_INSTALL.tar.gz
-
-
-WORKDIR $TMP_LOC
-
-RUN ./configure \
-  --with-lua=$WITH_LUA \
-  --with-lua-include=$LUA_INCLUDE \
-  --with-lua-lib=$LUA_LIB
-
-RUN make build
-
-RUN make install
-
-WORKDIR /
-
-RUN rm $TMP_LOC -rf
-
-#
-# Dependency for luarocks-artifactory
-#
-RUN apk update
-RUN apk add davfs2 openssl vim
+# Build and install lua tools
+ARG PREFIX=/usr/local/
+ARG LUA_LIB=${PREFIX}/lib/lua
+ARG LUA_INCLUDE=${PREFIX}/include
+RUN mkdir -p /tmp/lua && cd /tmp/lua && \
+    apk add --no-cache --virtual .tmp-build \
+        make \
+        tar \
+        openssl-dev \
+        gcc \
+        libc-dev && \
+    # Get Packages
+    curl -SsL https://www.lua.org/ftp/lua-${LUA_VERSION}.tar.gz | tar xzf - && \
+    curl -SsL https://luarocks.org/releases/luarocks-${LUAROCKS_VERSION}.tar.gz | tar xzf - && \
+    cd lua-${LUA_VERSION} && \
+    # Build Lua
+    make linux test && \
+    make install && \
+    cd ../luarocks-${LUAROCKS_VERSION} && \
+    # Build LuaRocks
+    ./configure \
+        --with-lua=${PREFIX} \
+        --with-lua-include=${LUA_INCLUDE} \
+        --with-lua-lib=${LUA_LIB} && \
+    make build && \
+    make install && \
+    # Cleanup
+    rm -rf /tmp/lua && \
+    apk del .tmp-build && \
+    # Create directories
+    mkdir -p ~/.davfs2 ~/.luarocks
